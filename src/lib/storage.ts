@@ -3,6 +3,7 @@ import type { AppData, StorageSettings } from "./types";
 
 const STORAGE_KEY = "creative-trust-points:v1";
 const SETTINGS_KEY = "creative-trust-points:storage-settings:v1";
+const DEFAULT_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbzvAb34MCgmdQ3EVQNe2Y6AqwdX7lsXIgBGIA9pq1MW-ostnM9YJ2C2HKjmU4vzgjQy/exec";
 
 export function normalizeData(data: Partial<AppData> | null | undefined): AppData {
   const base = defaultData();
@@ -42,18 +43,31 @@ export function saveData(data: AppData) {
 }
 
 export function loadStorageSettings(): StorageSettings {
+  const defaultSettings: StorageSettings = DEFAULT_SHEETS_API_URL
+    ? { mode: "sheets", sheetsApiUrl: DEFAULT_SHEETS_API_URL }
+    : { mode: "local", sheetsApiUrl: "" };
+
   if (typeof localStorage === "undefined") {
-    return { mode: "local", sheetsApiUrl: "" };
+    return defaultSettings;
   }
 
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    const hasSavedSettings = parsed.mode === "local" || parsed.mode === "sheets";
+
+    if (!hasSavedSettings) {
+      return defaultSettings;
+    }
+
     return {
       mode: parsed.mode === "sheets" ? "sheets" : "local",
-      sheetsApiUrl: typeof parsed.sheetsApiUrl === "string" ? parsed.sheetsApiUrl : "",
+      sheetsApiUrl:
+        typeof parsed.sheetsApiUrl === "string" && parsed.sheetsApiUrl
+          ? parsed.sheetsApiUrl
+          : defaultSettings.sheetsApiUrl,
     };
   } catch {
-    return { mode: "local", sheetsApiUrl: "" };
+    return defaultSettings;
   }
 }
 
