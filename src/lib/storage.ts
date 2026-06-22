@@ -3,6 +3,7 @@ import type { AppData, StorageSettings } from "./types";
 
 const STORAGE_KEY = "creative-trust-points:v1";
 const SETTINGS_KEY = "creative-trust-points:storage-settings:v1";
+const PREFERRED_USER_KEY = "creative-trust-points:preferred-user:v1";
 const DEFAULT_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbzvAb34MCgmdQ3EVQNe2Y6AqwdX7lsXIgBGIA9pq1MW-ostnM9YJ2C2HKjmU4vzgjQy/exec";
 
 export function normalizeData(data: Partial<AppData> | null | undefined): AppData {
@@ -75,6 +76,15 @@ export function saveStorageSettings(settings: StorageSettings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+
+export function loadPreferredUserId(): string {
+  if (typeof localStorage === "undefined") return "";
+  return localStorage.getItem(PREFERRED_USER_KEY) || "";
+}
+
+export function savePreferredUserId(userId: string) {
+  localStorage.setItem(PREFERRED_USER_KEY, userId);
+}
 export function loadSheetsData(apiUrl: string): Promise<AppData> {
   return jsonp<AppData>(`${withAction(apiUrl, "load")}`)
     .then((data) => normalizeData(data))

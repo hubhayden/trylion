@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { classifyUrl } from "./lib/classify";
 import {
   MIN_REDEEMABLE_POINTS,
@@ -11,11 +11,12 @@ import {
   userStats,
 } from "./lib/calculations";
 import { defaultScoreRules } from "./lib/defaults";
-import { loadData, loadSheetsData, loadStorageSettings, saveData, saveStorageSettings, saveSheetsData } from "./lib/storage";
+import { loadData, loadPreferredUserId, loadSheetsData, loadStorageSettings, saveData, savePreferredUserId, saveStorageSettings, saveSheetsData } from "./lib/storage";
 import type { AppData, RewardUsage, ScoreRule, StorageSettings, UploadRecord, User } from "./lib/types";
 
 type Tab = "home" | "add" | "records" | "rewards" | "rules" | "users" | "sync";
 const CUSTOM_TYPE_ID = "custom";
+const adminTabs = new Set<Tab>(["rules", "users", "sync"]);
 
 const tabs: { id: Tab; label: string }[] = [
   { id: "home", label: "홈" },
@@ -36,12 +37,17 @@ export default function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [settings, setSettings] = useState<StorageSettings>(() => loadStorageSettings());
   const [syncStatus, setSyncStatus] = useState("로컬 저장 중");
+  const [preferredUserId, setPreferredUserId] = useState(() => loadPreferredUserId());
   const [activeTab, setActiveTab] = useState<Tab>("home");
+  const didFinishInitialSheetsLoad = useRef(false);
+  const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+  const visibleTabs = isAdmin ? tabs : tabs.filter((tab) => !adminTabs.has(tab.id));
   const activeRules = data.scoreRules.filter((rule) => rule.isActive);
 
   useEffect(() => {
     saveData(data);
     if (settings.mode === "sheets" && settings.sheetsApiUrl) {
+      if (!didFinishInitialSheetsLoad.current) return;
       setSyncStatus("Google Sheets에 저장 중...");
       saveSheetsData(settings.sheetsApiUrl, data)
         .then(() => setSyncStatus("Google Sheets 연동 중"))
@@ -49,23 +55,51 @@ export default function App() {
     } else {
       setSyncStatus("로컬 저장 중");
     }
-  }, [data]);
+  }, [data, settings.mode, settings.sheetsApiUrl]);
 
   useEffect(() => {
     saveStorageSettings(settings);
   }, [settings]);
 
   useEffect(() => {
-    if (settings.mode !== "sheets" || !settings.sheetsApiUrl) return;
+    if (settings.mode !== "sheets" || !settings.sheetsApiUrl) {
+      didFinishInitialSheetsLoad.current = true;
+      return;
+    }
+    didFinishInitialSheetsLoad.current = false;
     setSyncStatus("Google Sheets에서 불러오는 중...");
     loadSheetsData(settings.sheetsApiUrl)
       .then((remoteData) => {
+        didFinishInitialSheetsLoad.current = true;
         setData(remoteData);
         saveData(remoteData);
         setSyncStatus("Google Sheets 연동 중");
       })
-      .catch(() => setSyncStatus("Sheets 불러오기 실패 - 로컬 데이터 사용 중"));
+      .catch(() => {
+        didFinishInitialSheetsLoad.current = true;
+        setSyncStatus("Sheets 불러오기 실패 - 로컬 데이터 사용 중");
+      });
   }, [settings.mode, settings.sheetsApiUrl]);
+
+  useEffect(() => {
+    const requestedUser = new URLSearchParams(window.location.search).get("user");
+    if (!requestedUser) return;
+    const matchedUser = data.users.find((user) => user.id === requestedUser || user.name === requestedUser);
+    if (!matchedUser) return;
+    setPreferredUserId(matchedUser.id);
+    savePreferredUserId(matchedUser.id);
+  }, [data.users]);
+
+  useEffect(() => {
+    if (!preferredUserId) return;
+    savePreferredUserId(preferredUserId);
+  }, [preferredUserId]);
+
+  useEffect(() => {
+    if (!isAdmin && adminTabs.has(activeTab)) {
+      setActiveTab("home");
+    }
+  }, [activeTab, isAdmin]);
 
   const updateData = (updater: (current: AppData) => AppData) => {
     setData((current) => updater(current));
@@ -87,7 +121,7 @@ export default function App() {
       <SyncBanner settings={settings} syncStatus={syncStatus} />
 
       <nav className="tabs" aria-label="주요 화면">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             className={activeTab === tab.id ? "active" : ""}
@@ -104,6 +138,8 @@ export default function App() {
           <AddRecord
             users={data.users}
             rules={activeRules}
+            preferredUserId={preferredUserId}
+            onPreferredUserChange={setPreferredUserId}
             onSave={(record) =>
               updateData((current) => ({
                 ...current,
@@ -115,17 +151,22 @@ export default function App() {
         {activeTab === "records" && (
           <RecordList
             data={data}
-            onDelete={(recordId) =>
-              updateData((current) => ({
-                ...current,
-                uploadRecords: current.uploadRecords.filter((record) => record.id !== recordId),
-              }))
+            onDelete={
+              isAdmin
+                ? (recordId) =>
+                    updateData((current) => ({
+                      ...current,
+                      uploadRecords: current.uploadRecords.filter((record) => record.id !== recordId),
+                    }))
+                : undefined
             }
           />
         )}
         {activeTab === "rewards" && (
           <Rewards
             data={data}
+            preferredUserId={preferredUserId}
+            onPreferredUserChange={setPreferredUserId}
             onSave={(usage) =>
               updateData((current) => ({
                 ...current,
@@ -281,13 +322,17 @@ function Home({ data, goTo }: { data: AppData; goTo: (tab: Tab) => void }) {
 function AddRecord({
   users,
   rules,
+  preferredUserId,
+  onPreferredUserChange,
   onSave,
 }: {
   users: User[];
   rules: ScoreRule[];
+  preferredUserId: string;
+  onPreferredUserChange: (userId: string) => void;
   onSave: (record: UploadRecord) => void;
 }) {
-  const [userId, setUserId] = useState(users[0]?.id ?? "");
+  const [userId, setUserId] = useState(preferredUserId || users[0]?.id || "");
   const [url, setUrl] = useState("");
   const [platform, setPlatform] = useState("URL 없음");
   const [contentTypeId, setContentTypeId] = useState("");
@@ -299,8 +344,13 @@ function AddRecord({
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    const preferredExists = users.some((user) => user.id === preferredUserId);
+    if (preferredExists && userId !== preferredUserId) {
+      setUserId(preferredUserId);
+      return;
+    }
     if (!userId && users[0]) setUserId(users[0].id);
-  }, [users, userId]);
+  }, [users, userId, preferredUserId]);
 
   useEffect(() => {
     const result = classifyUrl(url, rules);
@@ -370,7 +420,7 @@ function AddRecord({
       <div className="form-grid">
         <label>
           참여자
-          <select value={userId} onChange={(event) => setUserId(event.target.value)}>
+          <select value={userId} onChange={(event) => { setUserId(event.target.value); onPreferredUserChange(event.target.value); }}>
             {users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
@@ -474,7 +524,7 @@ function RecordList({
   onDelete,
 }: {
   data: AppData;
-  onDelete: (recordId: string) => void;
+  onDelete?: (recordId: string) => void;
 }) {
   const [userFilter, setUserFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -532,8 +582,8 @@ function RecordList({
   );
 }
 
-function Rewards({ data, onSave }: { data: AppData; onSave: (usage: RewardUsage) => void }) {
-  const [userId, setUserId] = useState(data.users[0]?.id ?? "");
+function Rewards({ data, preferredUserId, onPreferredUserChange, onSave }: { data: AppData; preferredUserId: string; onPreferredUserChange: (userId: string) => void; onSave: (usage: RewardUsage) => void }) {
+  const [userId, setUserId] = useState(preferredUserId || data.users[0]?.id || "");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
@@ -592,7 +642,7 @@ function Rewards({ data, onSave }: { data: AppData; onSave: (usage: RewardUsage)
       <div className="form-grid">
         <label>
           참여자
-          <select value={userId} onChange={(event) => setUserId(event.target.value)}>
+          <select value={userId} onChange={(event) => { setUserId(event.target.value); onPreferredUserChange(event.target.value); }}>
             {data.users.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name}
