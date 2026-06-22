@@ -111,10 +111,6 @@ export default function App() {
         <div>
           <p className="eyebrow">두 사자의 창작 습관 적금</p>
           <h1>Try! Lion!</h1>
-          <p>
-            URL은 검증이 아니라 분류와 기록을 돕기 위해 사용해요. 자동 분류는 언제든 직접
-            바꿀 수 있습니다.
-          </p>
         </div>
       </header>
 

@@ -54,18 +54,18 @@ export function loadStorageSettings(): StorageSettings {
 
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-    const hasSavedSettings = parsed.mode === "local" || parsed.mode === "sheets";
+    const savedSheetsUrl =
+      parsed.mode === "sheets" && typeof parsed.sheetsApiUrl === "string" && parsed.sheetsApiUrl
+        ? parsed.sheetsApiUrl
+        : defaultSettings.sheetsApiUrl;
 
-    if (!hasSavedSettings) {
-      return defaultSettings;
+    if (DEFAULT_SHEETS_API_URL) {
+      return { mode: "sheets", sheetsApiUrl: savedSheetsUrl };
     }
 
     return {
       mode: parsed.mode === "sheets" ? "sheets" : "local",
-      sheetsApiUrl:
-        typeof parsed.sheetsApiUrl === "string" && parsed.sheetsApiUrl
-          ? parsed.sheetsApiUrl
-          : defaultSettings.sheetsApiUrl,
+      sheetsApiUrl: savedSheetsUrl,
     };
   } catch {
     return defaultSettings;
