@@ -1,0 +1,22 @@
+{
+  "name": "creative-trust-points",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.config.js --host 127.0.0.1 --configLoader native",
+    "build": "tsc && vite build --config vite.config.js --configLoader native",
+    "preview": "vite preview --config vite.config.js --host 127.0.0.1 --configLoader native"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3"
+  }
+}
